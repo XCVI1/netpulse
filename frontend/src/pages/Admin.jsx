@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, PlusCircle, LogOut, Lock } from 'lucide-react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { Trash2, PlusCircle, LogOut, Lock, Server, Monitor, Router, Network } from 'lucide-react';
 
 export default function Admin() {
   const [token, setToken] = useState(localStorage.getItem('netpulse_token') || '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const [devices, setDevices] = useState([]);
   const [form, setForm] = useState({
     name: '',
     ip_address: '',
-    device_type: 'ssh',
+    device_type: 'linux', // 'linux', 'windows', 'router', 'switch'
     ssh_port: 22,
     ssh_user: 'root',
     ssh_password: '',
@@ -22,8 +21,12 @@ export default function Admin() {
   });
 
   const fetchDevices = async () => {
-    const res = await fetch(`${API_URL}/api/devices`);
-    setDevices(await res.json());
+    try {
+      const res = await fetch('/api/devices');
+      if (res.ok) setDevices(await res.json());
+    } catch (err) {
+      console.error('Ошибка загрузки устройств:', err);
+    }
   };
 
   useEffect(() => {
@@ -33,23 +36,39 @@ export default function Admin() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-    const res = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      localStorage.setItem('netpulse_token', data.access_token);
-      setToken(data.access_token);
-    } else {
-      setError('Неверный логин или пароль');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('netpulse_token', data.access_token);
+        setToken(data.access_token);
+      } else {
+        setError('Неверный логин или пароль');
+      }
+    } catch (err) {
+      setError('Сервер бэкенда недоступен. Проверьте контейнер netpulse_backend.');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleTypeChange = (type) => {
+    setForm({
+      ...form,
+      device_type: type,
+      ssh_user: type === 'windows' ? 'Administrator' : 'root',
+      ssh_port: 22
+    });
   };
 
   const handleAddDevice = async (e) => {
     e.preventDefault();
-    const res = await fetch(`${API_URL}/api/admin/devices`, {
+    const res = await fetch('/api/admin/devices', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -66,7 +85,7 @@ export default function Admin() {
   };
 
   const handleDelete = async (id) => {
-    await fetch(`${API_URL}/api/admin/devices/${id}`, {
+    await fetch(`/api/admin/devices/${id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -78,7 +97,6 @@ export default function Admin() {
     setToken('');
   };
 
-  // Экран авторизации
   if (!token) {
     return (
       <div className="max-w-md mx-auto mt-16 bg-slate-900 border border-slate-800 p-8 rounded-2xl">
@@ -86,7 +104,7 @@ export default function Admin() {
           <Lock className="w-6 h-6 text-amber-400" />
           <h2>Вход в панель администратора</h2>
         </div>
-        {error && <p className="bg-rose-500/10 text-rose-400 p-3 rounded-lg text-sm mb-4">{error}</p>}
+        {error && <p className="bg-rose-500/10 border border-rose-500/30 text-rose-400 p-3 rounded-lg text-sm mb-4">{error}</p>}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="text-xs text-slate-400">Логин</label>
@@ -94,7 +112,7 @@ export default function Admin() {
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+              className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 outline-none"
               required
             />
           </div>
@@ -104,39 +122,74 @@ export default function Admin() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+              className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 outline-none"
               required
             />
           </div>
-          <button className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded-lg transition">
-            Войти
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium py-2 rounded-lg transition"
+          >
+            {loading ? 'Проверка...' : 'Войти'}
           </button>
         </form>
       </div>
     );
   }
 
-  // Экран управления узлами
+  const isServer = form.device_type === 'linux' || form.device_type === 'windows';
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Управление узлами сети</h1>
+        <h1 className="text-2xl font-bold">Управление инфраструктурой</h1>
         <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white">
           <LogOut className="w-4 h-4" /> Выйти
         </button>
       </div>
 
-      {/* Форма добавления нового хоста */}
-      <form onSubmit={handleAddDevice} className="bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4">
+      <form onSubmit={handleAddDevice} className="bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-5">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <PlusCircle className="w-5 h-5 text-emerald-400" /> Добавить сервер или маршрутизатор
+          <PlusCircle className="w-5 h-5 text-emerald-400" /> Добавить новое устройство
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Плитки выбора типа оборудования */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { id: 'linux', label: 'Сервер Linux', sub: 'Debian / Ubuntu / Proxmox', icon: Server },
+            { id: 'windows', label: 'Сервер Windows', sub: 'WinServer / RDP / SSH', icon: Monitor },
+            { id: 'router', label: 'Маршрутизатор', sub: 'Cisco / MikroTik (SNMP)', icon: Router },
+            { id: 'switch', label: 'Коммутатор', sub: 'D-Link / L2-L3 Switch', icon: Network },
+          ].map(item => {
+            const Icon = item.icon;
+            const active = form.device_type === item.id;
+            return (
+              <button
+                type="button"
+                key={item.id}
+                onClick={() => handleTypeChange(item.id)}
+                className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
+                  active
+                    ? 'bg-emerald-500/10 border-emerald-500 text-white'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-medium text-sm">
+                  <Icon className={`w-4 h-4 ${active ? 'text-emerald-400' : 'text-slate-400'}`} />
+                  {item.label}
+                </div>
+                <span className="text-[11px] text-slate-500">{item.sub}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-xs text-slate-400">Название узла</label>
             <input
-              placeholder="Напр: Proxmox-Main или Cisco-Core"
+              placeholder="Напр: WDS-Server, Proxmox-01 или Cisco-2911"
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
               className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
@@ -144,7 +197,7 @@ export default function Admin() {
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400">IP-адрес / Хост</label>
+            <label className="text-xs text-slate-400">IP-адрес или Домен</label>
             <input
               placeholder="192.168.1.10"
               value={form.ip_address}
@@ -153,24 +206,14 @@ export default function Admin() {
               required
             />
           </div>
-          <div>
-            <label className="text-xs text-slate-400">Тип оборудования</label>
-            <select
-              value={form.device_type}
-              onChange={e => setForm({ ...form, device_type: e.target.value })}
-              className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="ssh">Linux Сервер (SSH)</option>
-              <option value="snmp">Маршрутизатор / Свитч (SNMP)</option>
-            </select>
-          </div>
         </div>
 
-        {/* Динамические поля в зависимости от выбора SSH или SNMP */}
-        {form.device_type === 'ssh' ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-800">
+        {isServer ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-slate-800">
             <div>
-              <label className="text-xs text-slate-400">SSH Пользователь</label>
+              <label className="text-xs text-slate-400">
+                {form.device_type === 'windows' ? 'Пользователь Windows (OpenSSH)' : 'SSH Пользователь'}
+              </label>
               <input
                 value={form.ssh_user}
                 onChange={e => setForm({ ...form, ssh_user: e.target.value })}
@@ -178,10 +221,12 @@ export default function Admin() {
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400">SSH Пароль</label>
+              <label className="text-xs text-slate-400">
+                Пароль {form.device_type === 'windows' && '(необязательно для RDP-пинга)'}
+              </label>
               <input
                 type="password"
-                placeholder="Пароль от сервера"
+                placeholder="Пароль учетной записи"
                 value={form.ssh_password}
                 onChange={e => setForm({ ...form, ssh_password: e.target.value })}
                 className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
@@ -198,9 +243,9 @@ export default function Admin() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-800">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-800">
             <div>
-              <label className="text-xs text-slate-400">SNMP Community String</label>
+              <label className="text-xs text-slate-400">SNMP Community (Read-Only)</label>
               <input
                 value={form.snmp_community}
                 onChange={e => setForm({ ...form, snmp_community: e.target.value })}
@@ -208,7 +253,7 @@ export default function Admin() {
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400">SNMP Порт</label>
+              <label className="text-xs text-slate-400">SNMP UDP Порт</label>
               <input
                 type="number"
                 value={form.snmp_port}
@@ -219,21 +264,20 @@ export default function Admin() {
           </div>
         )}
 
-        <button className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-5 py-2 rounded-lg text-sm transition">
-          Подключить устройство
+        <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-5 py-2.5 rounded-lg text-sm transition">
+          Добавить в мониторинг
         </button>
       </form>
 
-      {/* Таблица добавленных устройств */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
             <tr>
-              <th className="p-4">Имя</th>
+              <th className="p-4">Устройство</th>
               <th className="p-4">IP-адрес</th>
-              <th className="p-4">Протокол</th>
+              <th className="p-4">Категория</th>
               <th className="p-4">Статус</th>
-              <th className="p-4 text-right">Действия</th>
+              <th className="p-4 text-right">Удалить</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
