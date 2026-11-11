@@ -1,1 +1,32 @@
+# === Python / FastAPI ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# === Node.js / Frontend ===
+node_modules/
+dist-ssr/
+*.local
+
+# === Environment & Secrets ===
 .env
+*.pem
+*.key
+
+# === IDE & OS ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# === Databases & Logs ===
+*.sqlite3
+*.db
+*.log
